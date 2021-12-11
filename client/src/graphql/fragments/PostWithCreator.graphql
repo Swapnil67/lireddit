@@ -1,0 +1,14 @@
+fragment PostWithCreator on Post {
+  id
+  title
+  textSnippet
+  points
+  createdAt
+  updatedAt
+  voteStatus
+  creator {
+    id
+    username
+    email
+  }
+}
