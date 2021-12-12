@@ -21,7 +21,7 @@ const Post = ({}) => {
     console.log(error.message);
     return <div>{error.message}</div>;
   }
-
+// Hi
   if (fetching) {
     return <Layout>Loading...</Layout>;
   }

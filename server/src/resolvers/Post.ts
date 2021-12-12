@@ -104,11 +104,18 @@ export class PostResolver {
     // 20 -> 21
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
+    console.log(userid);
     
-    const replacements: any = [realLimitPlusOne, userid];
+    const replacements: any = [realLimitPlusOne];
 
+    if(userid) {
+      replacements.push(userid)
+    }
+
+    let cursorIndex = 2;
     if(cursor) {
       replacements.push(new Date(parseInt(cursor)));
+      cursorIndex = replacements.length;
     }
 
     // In postgres we can have multiple user table so we need to specify public.user
@@ -128,12 +135,12 @@ export class PostResolver {
       }
       from post p
       inner join public.user u on u.id = p."creatorId"
-      ${cursor ? `where p."createdAt" < $3` : ""}
+      ${cursor ? `where p."createdAt" < $${cursorIndex}` : ""}
       order by p."createdAt" DESC
       limit $1
     `, replacements)
 
-    console.log("Posts: ", posts[0]);
+    // console.log("Posts: ", posts[0]);
     
 
     // const qb =  getConnection()
@@ -229,11 +236,15 @@ export class PostResolver {
   }
 
   @Mutation(() => Boolean)
+  @UseMiddleware(isAuth)
   async deletePost(
-    @Arg("id") id: number,
+    @Arg("id", () => Int) id: number,
+    @Ctx() {req, userId}: MyContext
   ): Promise<Boolean> {
+    console.log("UserId: ", userId);
+    
     try {
-      await Post.delete(id);
+      await Post.delete({id, creatorId: userId});
     } catch (error) {
       console.log(error);
       return false;
