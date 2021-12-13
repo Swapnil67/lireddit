@@ -3,10 +3,10 @@ import { withUrqlClient } from "next-urql";
 import { createUrqlClient } from "../util/createUrqlClient";
 import Layout from "./components/Layout";
 import { Box, Flex, Heading, Stack, Text } from "@chakra-ui/layout";
-import { CloseButton, IconButton, Link } from "@chakra-ui/react";
+import { CloseButton, IconButton, Link, useToast } from "@chakra-ui/react";
 import NextLink from "next/link";
 import { Button } from "@chakra-ui/button";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useDeletePostMutation, usePostsQuery } from "../src/generated/graphql";
 import UpvootsSection from "./components/UpvootsSection";
 import { DeleteIcon } from "@chakra-ui/icons";
@@ -26,22 +26,40 @@ function Home() {
   const [{ fetching, data }] = usePostsQuery({ variables });
   // console.log("Posts: ", data);
   const [, deletePost] = useDeletePostMutation();
+  const [showAlert, setShowAlert] = useState(false);
+  const toast = useToast();
   async function deleteOnePost(id) {
     let deletedResponse = await deletePost({ id });
-    console.log("DeletedResponse: ", deletedResponse);
+    // console.log("DeletedResponse: ", deletedResponse);
     if (deletedResponse.data.deletePost) {
-      return (
-        <Alert status="success">
-          <AlertIcon />
-          <AlertTitle mr={2}>Your browser is outdated!</AlertTitle>
-          <AlertDescription>
-            Your Chakra experience may be degraded.
-          </AlertDescription>
-          <CloseButton position="absolute" right="8px" top="8px" />
-        </Alert>
-      );
+      // setShowAlert(true);
+      toast({
+        title: "Success",
+        status: "success",
+        description:"Post deleted Successfully!",
+        variant: "subtle",
+        isClosable: true
+      });
+    }else if(deletedResponse.error) {
+      toast({
+        title: "error",
+        status: "error",
+        description:"Something went wrong",
+        variant: "subtle",
+        isClosable: true
+      });
     }
   }
+  // useEffect(() => {
+  //   console.log("Display the alert");
+  //   toast({
+  //     title: "Success",
+  //     status: "success",
+  //     description:"Post deleted Successfully!",
+  //     variant: "subtle",
+  //     isClosable: true
+  //   });
+  // }, [showAlert]);
   if (data?.posts.posts.length === 0) {
     return <h1> No Posts </h1>;
   }
@@ -52,7 +70,7 @@ function Home() {
         <div>Loading...</div>
       ) : (
         <Stack spacing={8}>
-          {data?.posts.posts.map((p) => (
+          {data?.posts.posts.map((p) => !p ? null : (
             <Flex key={p.id} p={5} shadow="md" borderWidth="1px">
               <UpvootsSection post={p} />
               <Box flex={1}>

@@ -223,14 +223,15 @@ export class PostResolver {
   @Mutation(() => Post)
   async updatePost(
     @Arg("id") id: number,
-    @Arg("title", () => String, { nullable: true }) title: string,
+    @Arg("title", { nullable: true }) title: string,
+    @Arg("text",  { nullable: true }) text: string,
   ): Promise<Post | null> {
     const post = await Post.findOne(id);
     if (!post) {
       return null;
     }
     if (typeof title !== "undefined") {
-      Post.update({id}, {title});
+      Post.update({id}, {title, text});
     }
     return post;
   }
