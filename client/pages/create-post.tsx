@@ -22,8 +22,6 @@ const CreatePost: React.FC<{}> = ({}) => {
       console.log("You are not logged In");
     }
   }, [fetching, data, router])
-  // let isLoggedIn = useIsAuth();
-  // console.log("isLoggedIn: ", isLoggedIn);
   
   const [, createPost] = useCreatePostMutation()
   return  (

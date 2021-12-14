@@ -1,5 +1,19 @@
 import { Post } from "../entities/Post";
-import { Arg,Args,Ctx,Field,FieldResolver,InputType,Int,Mutation, ObjectType, Query, Resolver, Root, UseMiddleware } from "type-graphql";
+import {
+  Arg,
+  Args,
+  Ctx,
+  Field,
+  FieldResolver,
+  InputType,
+  Int,
+  Mutation,
+  ObjectType,
+  Query,
+  Resolver,
+  Root,
+  UseMiddleware,
+} from "type-graphql";
 import { MyContext } from "../types";
 import * as jwt from "jsonwebtoken";
 import { User } from "../entities/User";
@@ -11,24 +25,38 @@ import schema from "../validations/validationSchemas";
 import { getConnection } from "typeorm";
 import getUserFromToken from "../utils/getUserfromToken";
 import { Upvoot } from "../entities/Upvoot";
-
+import { FileWatcherEventKind } from "typescript";
 
 // import sleep from "../utils/sleep";
 
 @InputType()
 class PostInput {
   @Field()
-  title: string
+  title: string;
   @Field()
-  text: string
+  text: string;
 }
 
 @ObjectType()
 class PostResponse {
   @Field(() => [FieldError], { nullable: true })
   errors?: FieldError[];
-  @Field(() => Post, {nullable: true})
+  @Field(() => Post, { nullable: true })
   post?: Post;
+}
+
+@ObjectType()
+class UpdatePostResponse {
+  @Field(() => [FieldError], { nullable: true })
+  errors?: FieldError[];
+  @Field(() => Int, { nullable: true })
+  id?: number;
+  @Field(() => String!, { nullable: true })
+  title?: string;
+  @Field(() => String!, { nullable: true })
+  text?: string;
+  @Field(() => String!, { nullable: true })
+  textSnippet?: string;
 }
 
 @ObjectType()
@@ -41,7 +69,6 @@ class PaginatedPosts {
 
 @Resolver(Post)
 export class PostResolver {
-
   @FieldResolver(() => String)
   textSnippet(@Root() root: Post) {
     return root.text.slice(0, 50);
@@ -50,76 +77,86 @@ export class PostResolver {
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
   async vote(
-    @Arg('postId', () => Int) postId: number,
-    @Arg('value', () => Int) value: number,
-    @Ctx() {req}: MyContext
+    @Arg("postId", () => Int) postId: number,
+    @Arg("value", () => Int) value: number,
+    @Ctx() { req }: MyContext
   ) {
-    let user = await getUserFromToken(req)
-    console.log('User => ', user);
+    let user = await getUserFromToken(req);
+    console.log("User => ", user);
     const isUpvoot = value !== -1; // only 1 & -1 are allowed
     const realValue = isUpvoot ? 1 : -1;
 
-    const upvoot = await Upvoot.findOne({where: {postId, userId: user.id}});
+    const upvoot = await Upvoot.findOne({ where: { postId, userId: user.id } });
     // User has voted on the post before and the are changing their post
-    if(upvoot && upvoot.value !== realValue) {
+    if (upvoot && upvoot.value !== realValue) {
       await getConnection().transaction(async (tm) => {
-        await tm.query(`
+        await tm.query(
+          `
           update upvoot
           set value = $1
           where "postId" = $2 and "userId" = $3
-        `, [realValue, postId, user.id]);
+        `,
+          [realValue, postId, user.id]
+        );
 
-        await tm.query(`
+        await tm.query(
+          `
           update post
           set points = points + $1
           where id = $2;
-        `, [2 * realValue, postId]);
-      })
-    } else if(!upvoot) {
+        `,
+          [2 * realValue, postId]
+        );
+      });
+    } else if (!upvoot) {
       // dividing transactions into two parts.
       await getConnection().transaction(async (tm) => {
-        await tm.query(`
+        await tm.query(
+          `
           insert into upvoot ("userId", "postId", value)
           values($1, $2, $3);
-        `, [user.id, postId, realValue])
-        await tm.query(`
+        `,
+          [user.id, postId, realValue]
+        );
+        await tm.query(
+          `
           update post
           set points = points + $1
           where id = $2;
-        `, [realValue, postId]);
-      })
+        `,
+          [realValue, postId]
+        );
+      });
     }
     return true;
   }
 
-
-
-
   @Query(() => PaginatedPosts) // Graphql type
   async posts(
-    @Arg('limit', () => Int) limit: number,
-    @Arg('cursor', () => String, {nullable: true}) cursor: string | null,
-    @Ctx() {req, userId: userid}: MyContext
+    @Arg("limit", () => Int) limit: number,
+    @Arg("cursor", () => String, { nullable: true }) cursor: string | null,
+    @Ctx() { req, userId: userid }: MyContext
   ): Promise<PaginatedPosts> {
     // 20 -> 21
     const realLimit = Math.min(50, limit);
     const realLimitPlusOne = realLimit + 1;
     console.log(userid);
-    
+
     const replacements: any = [realLimitPlusOne];
 
-    if(userid) {
-      replacements.push(userid)
+    if (userid) {
+      replacements.push(userid);
     }
 
     let cursorIndex = 2;
-    if(cursor) {
+    if (cursor) {
       replacements.push(new Date(parseInt(cursor)));
       cursorIndex = replacements.length;
     }
 
     // In postgres we can have multiple user table so we need to specify public.user
-    const posts = await getConnection().query(`
+    const posts = await getConnection().query(
+      `
       select p.*,
       json_build_object(
         'id', u.id,
@@ -130,18 +167,19 @@ export class PostResolver {
       ) creator, 
       ${
         userid
-        ? '(select value from upvoot where "userId" = $2 and "postId" = p.id) "voteStatus"'
-        : 'null as "voteStatus"'
+          ? '(select value from upvoot where "userId" = $2 and "postId" = p.id) "voteStatus"'
+          : 'null as "voteStatus"'
       }
       from post p
       inner join public.user u on u.id = p."creatorId"
       ${cursor ? `where p."createdAt" < $${cursorIndex}` : ""}
       order by p."createdAt" DESC
       limit $1
-    `, replacements)
+    `,
+      replacements
+    );
 
-    // console.log("Posts: ", posts[0]);
-    
+    console.log("Posts: ", posts[0]);
 
     // const qb =  getConnection()
     // .getRepository(Post)
@@ -158,17 +196,18 @@ export class PostResolver {
     //   qb.where('p."createdAt" < :cursor', { cursor: new Date(parseInt(cursor))})
     // }
     // const posts = await qb.getMany();
-    return {posts: posts.slice(0, realLimit), hasMore: posts.length === realLimitPlusOne}
+    return {
+      posts: posts.slice(0, realLimit),
+      hasMore: posts.length === realLimitPlusOne,
+    };
     // return {posts, hasMore: true}
     // const posts = await Post.find({});
     // return posts;
   }
 
   @Query(() => Post, { nullable: true }) // Similar to type script <Post | null>
-  async post(
-    @Arg("id", () => Int) id: number,
-  ): Promise<Post | undefined> {
-    const post = await Post.findOne(id, {relations: ["creator"]});
+  async post(@Arg("id", () => Int) id: number): Promise<Post | undefined> {
+    const post = await Post.findOne(id, { relations: ["creator"] });
     return post;
   }
 
@@ -176,32 +215,42 @@ export class PostResolver {
   @UseMiddleware(isAuth)
   async createPost(
     @Arg("input") input: PostInput,
-    @Ctx() {req}: MyContext
+    @Ctx() { req }: MyContext
   ): Promise<PostResponse> {
-    let user = await getUserFromToken(req)
-    console.log('User => ', user);
-    
-    const titleError = await validateField({"text": input.title}, input.title, schema.textSchema , "title");
-    const bodyError = await validateField({"text": input.text}, input.text, schema.textSchema , "text");
-    if(titleError.errors) {
+    let user = await getUserFromToken(req);
+    console.log("User => ", user);
+
+    const titleError = await validateField(
+      { text: input.title },
+      input.title,
+      schema.textSchema,
+      "title"
+    );
+    const bodyError = await validateField(
+      { text: input.text },
+      input.text,
+      schema.textSchema,
+      "text"
+    );
+    if (titleError.errors) {
       console.log("=> ", titleError);
       return titleError;
-    }else if(bodyError.errors) {
+    } else if (bodyError.errors) {
       console.log("=> ", bodyError);
       return bodyError;
     }
     let post: undefined | Post = undefined;
     try {
       // post = Post.create({...input, creatorId: user!.id}).save()
-      post = await getConnection()
-      .transaction((transactionalEntityManager): Promise<Post> => {
-        const postObj = Post.create({
-          ...input,
-          creatorId: user!.id
-        });
-        return transactionalEntityManager.save(Post, postObj);
-      })
-      
+      post = await getConnection().transaction(
+        (transactionalEntityManager): Promise<Post> => {
+          const postObj = Post.create({
+            ...input,
+            creatorId: user!.id,
+          });
+          return transactionalEntityManager.save(Post, postObj);
+        }
+      );
     } catch (error) {
       console.log("=> ", error);
       if ((error.code = "23505" && error.detail.includes("already exists"))) {
@@ -216,36 +265,64 @@ export class PostResolver {
       }
     }
     return {
-      post
+      post,
     };
   }
 
-  @Mutation(() => Post)
+  @Mutation(() => UpdatePostResponse)
+  @UseMiddleware(isAuth)
   async updatePost(
-    @Arg("id") id: number,
+    @Arg("id", () => Int!) id: number,
     @Arg("title", { nullable: true }) title: string,
-    @Arg("text",  { nullable: true }) text: string,
-  ): Promise<Post | null> {
+    @Arg("text", { nullable: true }) text: string,
+    @Ctx() { req, userId }: MyContext
+  ): Promise<UpdatePostResponse | null> {
     const post = await Post.findOne(id);
     if (!post) {
       return null;
     }
-    if (typeof title !== "undefined") {
-      Post.update({id}, {title, text});
+    const titleError = await validateField(
+      { title: title },
+      title,
+      schema.titleSchema,
+      "title"
+    );
+    const textError = await validateField(
+      { text: text },
+      text,
+      schema.textSchema,
+      "text"
+    );
+    console.log(titleError);
+
+    if (titleError.errors) {
+      return titleError;
+    } else if (textError.errors) {
+      return textError;
     }
-    return post;
+    const result = await getConnection()
+      .createQueryBuilder()
+      .update(Post)
+      .set({ title, text })
+      .where('id = :id and "creatorId" = :creatorId', {
+        id,
+        creatorId: userId,
+      })
+      .returning("*")
+      .execute();
+    return result.raw[0];
   }
 
   @Mutation(() => Boolean)
   @UseMiddleware(isAuth)
   async deletePost(
     @Arg("id", () => Int) id: number,
-    @Ctx() {req, userId}: MyContext
+    @Ctx() { req, userId }: MyContext
   ): Promise<Boolean> {
     console.log("UserId: ", userId);
-    
+
     try {
-      await Post.delete({id, creatorId: userId});
+      await Post.delete({ id, creatorId: userId });
     } catch (error) {
       console.log(error);
       return false;

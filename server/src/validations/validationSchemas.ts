@@ -17,7 +17,11 @@ const textSchema = object({
   text: string().required("This cannot be empty!")
 });
 
-export default {passwordSchema, emailSchema, usernameSchema, textSchema};
+const titleSchema = object({
+  title: string().required("Title cannot be empty!")
+});
+
+export default {passwordSchema, emailSchema, usernameSchema, textSchema, titleSchema};
 
 // export type PasswordType = TypeOf<typeof schema>;
 
